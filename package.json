@@ -1,0 +1,26 @@
+{
+  "name": "oticket",
+  "version": "1.0.0",
+  "main": "index.js",
+  "license": "MIT",
+  "scripts": {
+    "dev": "ts-node-dev --transpile-only src/server.ts"
+  },
+  "devDependencies": {
+    "@mermaid-js/mermaid-cli": "^10.1.0",
+    "@types/cors": "^2.8.13",
+    "@types/express": "^4.17.17",
+    "prisma-erd-generator": "^1.7.0",
+    "ts-node-dev": "^2.0.0",
+    "typescript": "^4.9.5"
+  },
+  "dependencies": {
+    "@prisma/client": "^4.10.1",
+    "axios": "^1.4.0",
+    "cors": "^2.8.5",
+    "express": "^4.18.2",
+    "express-async-errors": "^3.1.1",
+    "prisma": "^4.10.1",
+    "zod": "^3.21.4"
+  }
+}
