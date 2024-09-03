@@ -56,7 +56,7 @@ class GenerateTournamentService {
     getUniqueRandomScore(existingScores: number[]): number {
         let score: number
         do {
-            score = Math.floor(Math.random() * 10)
+            score = Math.floor(Math.random() * 5)
         } while (existingScores.includes(score))
         return score
     }
@@ -86,47 +86,44 @@ class GenerateTournamentService {
     }
 
     generateEliminatory(players: { id: number }[]) {
-        const matches = []
-        let round = 1
-        let roundPlayers = players
+        const matches = [];
+        let round = 1;
 
-        while (roundPlayers.length > 1) {
-            const currentRoundMatches = []
-            const nextRoundPlayers = []
+        // Calcula o próximo número de potência de dois para garantir um número de jogadores válido
+        const powerOfTwo = Math.pow(2, Math.ceil(Math.log2(players.length)));
+        let paddedPlayers = [...players, ...Array(powerOfTwo - players.length).fill(null)];
 
-            for (let i = 0; i < roundPlayers.length; i += 2) {
-                const player1 = roundPlayers[i]
-                const player2 = roundPlayers[i + 1] || null
+        while (paddedPlayers.length > 1) {
+            const currentRoundMatches = [];
 
-                const score1 = this.getUniqueRandomScore(matches.map((m) => m.score1))
+            for (let i = 0; i < paddedPlayers.length; i += 2) {
+                const player1 = paddedPlayers[i];
+                const player2 = paddedPlayers[i + 1] || null;
 
-                let score2 = this.getUniqueRandomScore(matches.map((m) => m.score2))
+                // Gera os scores aleatórios para os jogadores
+                const score1 = this.getUniqueRandomScore([]);
+                const score2 = this.getUniqueRandomScore([]);
 
-                if (score1 === score2) {
-                    score2 = score1 + 1
-                }
-
-                currentRoundMatches.push({
+                const match = {
                     player1Id: player1?.id ?? null,
                     player2Id: player2?.id ?? null,
                     round,
                     score1,
                     score2,
-                })
-
-                if (score1 > score2) {
-                    nextRoundPlayers.push(player1)
-                } else if (score2 > score1) {
-                    nextRoundPlayers.push(player2)
-                }
+                };
+                currentRoundMatches.push(match);
+                matches.push(match);
             }
 
-            matches.push(...currentRoundMatches)
-            roundPlayers = nextRoundPlayers
-            round++
+            // Prepara a lista de jogadores para a próxima rodada
+            paddedPlayers = currentRoundMatches.map((m) => ({
+                id: m.score1 > m.score2 ? m.player1Id : m.player2Id,
+            }));
+
+            round++;
         }
 
-        return matches
+        return matches;
     }
 
     generateGroup(players: { id: number }[]) {
