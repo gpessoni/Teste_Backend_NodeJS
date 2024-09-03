@@ -7,12 +7,10 @@ interface GenerateTournamentRequest {
 
 class GenerateTournamentService {
     async execute({ numberOfPlayers, tournamentType }: GenerateTournamentRequest) {
-        // Verifica se o número de jogadores é uma potência de 2 para o torneio eliminatório
         if (tournamentType === "ELIMINATORY" && !this.isPowerOfTwo(numberOfPlayers)) {
             throw new Error("O número de jogadores deve ser uma potência de 2 para torneios eliminatórios.")
         }
 
-        // Cria o torneio
         const tournament = await prismaClient.tournament.create({
             data: {
                 name: `Tournament ${new Date().toISOString()}`,
@@ -30,15 +28,8 @@ class GenerateTournamentService {
             matches = this.generateGroup(players)
         }
 
-        // Adiciona placares aleatórios
-        const matchesWithScores = matches.map((match) => ({
-            ...match,
-            score1: this.getRandomScore(),
-            score2: this.getRandomScore(),
-        }))
-
         await prismaClient.match.createMany({
-            data: matchesWithScores.map((match) => ({
+            data: matches.map((match) => ({
                 player1Id: match.player1Id,
                 player2Id: match.player2Id,
                 round: match.round,
@@ -48,15 +39,26 @@ class GenerateTournamentService {
             })),
         })
 
+        const champion =
+            matches[matches.length - 1].score1 > matches[matches.length - 1].score2
+                ? matches[matches.length - 1].player1Id
+                : matches[matches.length - 1].player2Id
+
         return {
+            tournamentType: tournamentType,
             tournamentName: tournament.name,
             tournamentId: tournament.id,
-            matches: matchesWithScores,
+            matches,
+            champion,
         }
     }
 
-    getRandomScore() {
-        return Math.floor(Math.random() * 10)
+    getUniqueRandomScore(existingScores: number[]): number {
+        let score: number
+        do {
+            score = Math.floor(Math.random() * 10)
+        } while (existingScores.includes(score))
+        return score
     }
 
     isPowerOfTwo(n: number) {
@@ -86,30 +88,42 @@ class GenerateTournamentService {
     generateEliminatory(players: { id: number }[]) {
         const matches = []
         let round = 1
+        let roundPlayers = players
 
-        const powerOfTwo = Math.pow(2, Math.ceil(Math.log2(players.length)))
-        let paddedPlayers = [...players, ...Array(powerOfTwo - players.length).fill(null)]
-
-        while (paddedPlayers.length > 1) {
+        while (roundPlayers.length > 1) {
             const currentRoundMatches = []
+            const nextRoundPlayers = []
 
-            for (let i = 0; i < paddedPlayers.length; i += 2) {
-                const player1 = paddedPlayers[i]
-                const player2 = paddedPlayers[i + 1] || null
+            for (let i = 0; i < roundPlayers.length; i += 2) {
+                const player1 = roundPlayers[i]
+                const player2 = roundPlayers[i + 1] || null
 
-                const match = {
+                const score1 = this.getUniqueRandomScore(matches.map((m) => m.score1))
+
+                let score2 = this.getUniqueRandomScore(matches.map((m) => m.score2))
+
+                if (score1 === score2) {
+                    score2 = score1 + 1
+                }
+
+                currentRoundMatches.push({
                     player1Id: player1?.id ?? null,
                     player2Id: player2?.id ?? null,
                     round,
+                    score1,
+                    score2,
+                })
+
+                if (score1 > score2) {
+                    nextRoundPlayers.push(player1)
+                } else if (score2 > score1) {
+                    nextRoundPlayers.push(player2)
                 }
-                currentRoundMatches.push(match)
-                matches.push(match)
             }
 
+            matches.push(...currentRoundMatches)
+            roundPlayers = nextRoundPlayers
             round++
-            paddedPlayers = currentRoundMatches.map((m) => ({
-                id: m.player1Id,
-            }))
         }
 
         return matches
@@ -121,10 +135,15 @@ class GenerateTournamentService {
 
         for (let i = 0; i < players.length; i++) {
             for (let j = i + 1; j < players.length; j++) {
+                const score1 = this.getUniqueRandomScore([])
+                const score2 = this.getUniqueRandomScore([])
+
                 matches.push({
                     player1Id: players[i].id,
                     player2Id: players[j].id,
                     round,
+                    score1,
+                    score2,
                 })
             }
         }
