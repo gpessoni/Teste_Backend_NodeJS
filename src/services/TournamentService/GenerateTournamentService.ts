@@ -39,10 +39,9 @@ class GenerateTournamentService {
             })),
         })
 
-        const champion =
-            matches[matches.length - 1].score1 > matches[matches.length - 1].score2
-                ? matches[matches.length - 1].player1Id
-                : matches[matches.length - 1].player2Id
+        const champion = tournamentType === "ELIMINATORY"
+            ? this.calculateEliminatoryChampion(matches)
+            : await this.calculateGroupChampion(tournament.id);
 
         return {
             tournamentType: tournamentType,
@@ -56,7 +55,7 @@ class GenerateTournamentService {
     getUniqueRandomScore(existingScores: number[]): number {
         let score: number
         do {
-            score = Math.floor(Math.random() * 5)
+            score = Math.floor(Math.random() * 10)
         } while (existingScores.includes(score))
         return score
     }
@@ -80,6 +79,11 @@ class GenerateTournamentService {
             where: {
                 tournamentId: tournamentId,
             },
+            include: {
+                matchesAsPlayer1: true,
+                matchesAsPlayer2: true,
+                matchesAsWinner: true,
+            },
         })
 
         return createdPlayers
@@ -89,7 +93,6 @@ class GenerateTournamentService {
         const matches = [];
         let round = 1;
 
-        // Calcula o próximo número de potência de dois para garantir um número de jogadores válido
         const powerOfTwo = Math.pow(2, Math.ceil(Math.log2(players.length)));
         let paddedPlayers = [...players, ...Array(powerOfTwo - players.length).fill(null)];
 
@@ -100,7 +103,6 @@ class GenerateTournamentService {
                 const player1 = paddedPlayers[i];
                 const player2 = paddedPlayers[i + 1] || null;
 
-                // Gera os scores aleatórios para os jogadores
                 const score1 = this.getUniqueRandomScore([]);
                 const score2 = this.getUniqueRandomScore([]);
 
@@ -115,7 +117,6 @@ class GenerateTournamentService {
                 matches.push(match);
             }
 
-            // Prepara a lista de jogadores para a próxima rodada
             paddedPlayers = currentRoundMatches.map((m) => ({
                 id: m.score1 > m.score2 ? m.player1Id : m.player2Id,
             }));
@@ -146,6 +147,57 @@ class GenerateTournamentService {
         }
 
         return matches
+    }
+
+    calculateEliminatoryChampion(matches: { player1Id: number | null, player2Id: number | null, score1: number, score2: number }[]) {
+        const lastMatch = matches[matches.length - 1];
+        return lastMatch.score1 > lastMatch.score2
+            ? lastMatch.player1Id
+            : lastMatch.player2Id;
+    }
+
+    async calculateGroupChampion(tournamentId: number) {
+        const players = await prismaClient.player.findMany({
+            where: { tournamentId },
+            include: {
+                matchesAsPlayer1: true,
+                matchesAsPlayer2: true,
+            },
+        });
+
+        const playerScores = players.map(player => {
+            let points = 0;
+            let goalsFor = 0;
+            let goalsAgainst = 0;
+
+            player.matchesAsPlayer1.forEach(match => {
+                goalsFor += match.score1;
+                goalsAgainst += match.score2;
+                points += match.score1 > match.score2 ? 3 : match.score1 === match.score2 ? 1 : 0;
+            });
+
+            player.matchesAsPlayer2.forEach(match => {
+                goalsFor += match.score2;
+                goalsAgainst += match.score1;
+                points += match.score2 > match.score1 ? 3 : match.score2 === match.score1 ? 1 : 0;
+            });
+
+            return {
+                playerId: player.id,
+                points,
+                goalDifference: goalsFor - goalsAgainst,
+                goalsFor,
+            };
+        });
+
+        playerScores.sort((a, b) => {
+            if (b.points !== a.points) return b.points - a.points;
+            if (b.goalDifference !== a.goalDifference) return b.goalDifference - a.goalDifference;
+            return b.goalsFor - a.goalsFor;
+        });
+
+        // Retorna o ID do jogador com a melhor pontuação
+        return playerScores[0]?.playerId ?? null;
     }
 }
 
